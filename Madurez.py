@@ -2,18 +2,23 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 
 # =====================================================
 # CONFIG
 # =====================================================
 st.set_page_config(page_title="Dashboard Madurez Digital", layout="wide")
-st.title("📊 Dashboard — Madurez Digital, Tecnología y Analítica")
 
-# GitHub-friendly: el Excel vive en la raíz del repo
 EXCEL_PATH = "Madurez Digital, Tecnología y Analítica.xlsx"
 SHEET_NAME = "DATA"
 
+# Paleta (más “viva” y entendible)
+PALETTE = px.colors.qualitative.Set2  # colores suaves pero variados
 
+
+# =====================================================
+# HELPERS
+# =====================================================
 def norm_text(x) -> str:
     if pd.isna(x):
         return ""
@@ -31,8 +36,19 @@ def yes_no(x):
 
 @st.cache_data(show_spinner=False)
 def load_data() -> pd.DataFrame:
-    # Forzamos openpyxl para leer .xlsx
     return pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME, engine="openpyxl")
+
+
+def madurez_level(score_0_100: float) -> str:
+    if pd.isna(score_0_100):
+        return "Sin dato"
+    if score_0_100 < 50:
+        return "🔴 Baja"
+    if score_0_100 < 65:
+        return "🟡 Media"
+    if score_0_100 < 80:
+        return "🟢 Buena"
+    return "🟣 Alta"
 
 
 def add_scores(df: pd.DataFrame) -> pd.DataFrame:
@@ -51,7 +67,6 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     col_dec = "En reuniones de seguimiento, ¿qué tanto se decide con datos vs “percepción”?"
     col_ideas = "¿Qué tan seguido el área propone ideas para mejorar con tecnología/herramientas digitales/datos?"
     col_ai_fam = "¿Qué tan familiarizo estás con herramientas de IA? 1-5"
-    col_want_ai = "¿Te gustaría implementar proyectos de inteligencia artificial para automatizar tareas de tu área?"
 
     # Mapeos a escala 1–5
     map_dep = {"nada": 1, "poco": 2, "medio": 3, "mucho": 4, "total": 5}
@@ -75,17 +90,17 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     }
     map_ideas = {"nunca": 1, "rara vez": 2, "a veces": 3, "frecuente": 4, "siempre": 5}
 
-    # Scores
+    # Scores base (0–5)
     d["score_dependencia"] = d[col_dep].map(lambda x: map_dep.get(norm_text(x), np.nan))
     d["score_excel"] = d[col_excel].map(lambda x: map_excel.get(norm_text(x), np.nan))
     d["score_powerbi"] = d[col_pbi].map(lambda x: map_pbi.get(norm_text(x), np.nan))
     d["score_dashboards"] = pd.to_numeric(d[col_dash], errors="coerce")
     d["score_freq_reportes"] = d[col_rep].map(lambda x: map_rep.get(norm_text(x), np.nan))
-    d["score_dataset_base"] = d[col_dataset].map(yes_no)
+    d["score_dataset_base"] = d[col_dataset].map(yes_no).map(lambda v: 5 if v == 1 else (2 if v == 0 else np.nan))
     d["score_calidad_datos"] = d[col_prob].map(lambda x: map_prob.get(norm_text(x), np.nan))
     d["score_decisiones_con_datos"] = d[col_dec].map(lambda x: map_dec.get(norm_text(x), np.nan))
     d["score_ideas_mejora"] = d[col_ideas].map(lambda x: map_ideas.get(norm_text(x), np.nan))
-    d["score_conoce_herr_digitales"] = d[col_tools].map(yes_no)
+    d["score_conoce_herr_digitales"] = d[col_tools].map(yes_no).map(lambda v: 4 if v == 1 else (2 if v == 0 else np.nan))
     d["score_ia_familiaridad"] = pd.to_numeric(d[col_ai_fam], errors="coerce")
 
     components = [
@@ -104,20 +119,20 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
 
     d["Madurez_0_5"] = d[components].mean(axis=1, skipna=True)
     d["Madurez_0_100"] = (d["Madurez_0_5"] / 5 * 100).round(1)
+    d["Nivel_madurez"] = d["Madurez_0_100"].map(madurez_level)
 
     return d
 
 
 # =====================================================
-# CARGA
+# LOAD
 # =====================================================
 try:
     df_raw = load_data()
 except FileNotFoundError:
     st.error(
         "❌ No encontré el Excel en la raíz del repo.\n\n"
-        f"Asegúrate de que exista este archivo:\n\n`{EXCEL_PATH}`\n\n"
-        "y que el sheet se llame `DATA`."
+        f"Verifica que exista: `{EXCEL_PATH}` y que el sheet se llame `{SHEET_NAME}`."
     )
     st.stop()
 except Exception as e:
@@ -127,19 +142,32 @@ except Exception as e:
 df = add_scores(df_raw)
 
 # =====================================================
-# FILTROS
+# SIDEBAR FILTERS (por defecto TODO)
 # =====================================================
-with st.sidebar:
-    st.header("🔎 Filtros")
-    areas = sorted(df["Área"].dropna().unique().tolist()) if "Área" in df.columns else []
-    if areas:
-        selected_areas = st.multiselect("Área", options=areas, default=areas)
-    else:
-        selected_areas = []
-        st.warning("No se encontró la columna 'Área'. Se mostrarán todos los datos.")
-    show_people = st.checkbox("Mostrar tabla por persona", value=True)
+st.sidebar.title("🔎 Filtros (opcional)")
+areas = sorted(df["Área"].dropna().unique().tolist()) if "Área" in df.columns else []
+selected_areas = st.sidebar.multiselect("Área", options=areas, default=areas) if areas else []
+show_people = st.sidebar.checkbox("Ver tabla por persona", value=True)
 
 df_f = df[df["Área"].isin(selected_areas)].copy() if selected_areas else df.copy()
+
+# =====================================================
+# HEADER
+# =====================================================
+st.markdown(
+    """
+<div style="padding: 14px 16px; border-radius: 14px; background: rgba(0,0,0,0.04);">
+  <h2 style="margin:0;">📌 Resumen Ejecutivo</h2>
+  <div style="margin-top:6px; color: rgba(0,0,0,0.65);">
+    Este tablero muestra un índice de madurez (0–100) construido a partir de prácticas de datos, tecnología, BI, calidad de datos, cultura y familiaridad con IA.
+    <br/>Por defecto ves <b>toda la organización</b>. Los filtros son solo para enfocarte en un área específica.
+  </div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+st.write("")
 
 # =====================================================
 # KPIs
@@ -153,7 +181,6 @@ by_area = (
     if "Área" in df_f.columns and len(df_f)
     else pd.DataFrame(columns=["Área", "Madurez_0_100"])
 )
-
 best_area = by_area.iloc[0]["Área"] if len(by_area) else "-"
 worst_area = by_area.iloc[-1]["Área"] if len(by_area) else "-"
 
@@ -171,130 +198,210 @@ dataset_yes = (
     else 0
 )
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Madurez promedio (0–100)", f"{overall:.1f}" if not np.isnan(overall) else "-")
-k2.metric("Respuestas", f"{n_resp}")
-k3.metric("Área más madura", f"{best_area}")
-k4.metric("Power BI en uso (aprox.)", f"{pbi_yes:.0f}%")
+c1, c2, c3, c4, c5 = st.columns([1.2, 1, 1, 1, 1])
 
-k5, k6, k7, k8 = st.columns(4)
-k5.metric("Dataset base existente (aprox.)", f"{dataset_yes:.0f}%")
-k6.metric("Área menos madura", f"{worst_area}")
-k7.metric("Mediana madurez", f"{df_f['Madurez_0_100'].median():.1f}" if len(df_f) else "-")
-k8.metric("Máx / Mín", f"{df_f['Madurez_0_100'].max():.1f} / {df_f['Madurez_0_100'].min():.1f}" if len(df_f) else "-")
+with c1:
+    # Gauge / indicador grande
+    fig_gauge = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=overall if not np.isnan(overall) else 0,
+            number={"suffix": " / 100"},
+            title={"text": "Madurez promedio"},
+            gauge={
+                "axis": {"range": [0, 100]},
+                "steps": [
+                    {"range": [0, 50], "color": "rgba(255,0,0,0.25)"},
+                    {"range": [50, 65], "color": "rgba(255,180,0,0.25)"},
+                    {"range": [65, 80], "color": "rgba(0,200,0,0.20)"},
+                    {"range": [80, 100], "color": "rgba(120,0,255,0.18)"},
+                ],
+                "threshold": {"line": {"color": "black", "width": 3}, "value": overall if not np.isnan(overall) else 0},
+            },
+        )
+    )
+    fig_gauge.update_layout(height=240, margin=dict(l=10, r=10, t=40, b=10))
+    st.plotly_chart(fig_gauge, use_container_width=True)
+
+with c2:
+    st.metric("Respuestas", f"{n_resp}")
+    st.metric("Mediana", f"{df_f['Madurez_0_100'].median():.1f}" if len(df_f) else "-")
+
+with c3:
+    st.metric("Área más madura", f"{best_area}")
+    st.metric("Área menos madura", f"{worst_area}")
+
+with c4:
+    st.metric("Power BI en uso", f"{pbi_yes:.0f}%")
+    st.metric("Dataset base", f"{dataset_yes:.0f}%")
+
+with c5:
+    st.metric("Máx / Mín", f"{df_f['Madurez_0_100'].max():.1f} / {df_f['Madurez_0_100'].min():.1f}" if len(df_f) else "-")
+    st.metric("Nivel global", madurez_level(overall) if not np.isnan(overall) else "-")
 
 st.divider()
 
 # =====================================================
-# GRÁFICAS
+# TABS (más entendible)
 # =====================================================
-c1, c2 = st.columns([1.2, 1])
+tab1, tab2, tab3 = st.tabs(["📊 Por área", "🧩 Componentes", "📋 Detalle"])
 
-with c1:
-    st.subheader("🏢 Madurez promedio por área")
-    if len(by_area):
-        fig_area = px.bar(
-            by_area,
-            x="Madurez_0_100",
-            y="Área",
-            orientation="h",
-            text="Madurez_0_100",
+# -------------------------
+# TAB 1: Por área
+# -------------------------
+with tab1:
+    left, right = st.columns([1.35, 1])
+
+    with left:
+        st.subheader("🏢 Ranking de madurez por área (promedio)")
+        if len(by_area):
+            fig_area = px.bar(
+                by_area,
+                x="Madurez_0_100",
+                y="Área",
+                orientation="h",
+                text="Madurez_0_100",
+                color="Madurez_0_100",
+                color_continuous_scale=["#ff4d4f", "#faad14", "#52c41a", "#722ed1"],
+            )
+            fig_area.update_traces(texttemplate="%{text:.1f}", textposition="outside")
+            fig_area.update_layout(height=600, margin=dict(l=10, r=10, t=10, b=10))
+            st.plotly_chart(fig_area, use_container_width=True)
+        else:
+            st.info("No hay datos suficientes para graficar por área.")
+
+    with right:
+        st.subheader("📈 Distribución (personas)")
+        fig_hist = px.histogram(df_f, x="Madurez_0_100", nbins=12, color_discrete_sequence=[PALETTE[0]])
+        fig_hist.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+        st.subheader("🚦 Semáforo de madurez (conteo)")
+        order = ["🔴 Baja", "🟡 Media", "🟢 Buena", "🟣 Alta"]
+        sem = df_f["Nivel_madurez"].value_counts().reindex(order).fillna(0).reset_index()
+        sem.columns = ["Nivel", "Personas"]
+        fig_sem = px.bar(
+            sem,
+            x="Nivel",
+            y="Personas",
+            text="Personas",
+            color="Nivel",
+            color_discrete_map={
+                "🔴 Baja": "#ff4d4f",
+                "🟡 Media": "#faad14",
+                "🟢 Buena": "#52c41a",
+                "🟣 Alta": "#722ed1",
+            },
         )
-        fig_area.update_traces(texttemplate="%{text:.1f}", textposition="outside")
-        fig_area.update_layout(height=650, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_area, use_container_width=True)
-    else:
-        st.info("No hay datos suficientes para graficar por área.")
+        fig_sem.update_traces(textposition="outside")
+        fig_sem.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig_sem, use_container_width=True)
 
-with c2:
-    st.subheader("📈 Distribución de madurez (personas)")
-    fig_hist = px.histogram(df_f, x="Madurez_0_100", nbins=12)
-    fig_hist.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig_hist, use_container_width=True)
+    st.divider()
 
-    st.subheader("🧩 Excel / Power BI / Calidad de datos")
-    col_excel = "Nivel promedio de Excel"
-    if col_excel in df_f.columns:
-        fig_excel = px.bar(df_f[col_excel].value_counts().reset_index(), x=col_excel, y="count")
-        fig_excel.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_excel, use_container_width=True)
+    st.subheader("🧠 Uso de BI y gobierno de datos (resumen rápido)")
+    a1, a2, a3 = st.columns(3)
 
     if pbi_col in df_f.columns:
-        fig_pbi = px.bar(df_f[pbi_col].value_counts().reset_index(), x=pbi_col, y="count")
-        fig_pbi.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_pbi, use_container_width=True)
+        pbi_counts = df_f[pbi_col].value_counts(dropna=False).reset_index()
+        pbi_counts.columns = ["Respuesta", "Conteo"]
+        fig_pbi = px.pie(pbi_counts, names="Respuesta", values="Conteo", hole=0.45, color_discrete_sequence=PALETTE)
+        fig_pbi.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
+        a1.plotly_chart(fig_pbi, use_container_width=True)
+        a1.caption("Power BI: tipo de uso (consulta vs creación).")
+
+    if dataset_col in df_f.columns:
+        ds = df_f[dataset_col].astype(str).str.strip().replace({"nan": "Sin respuesta"})
+        ds_counts = ds.value_counts().reset_index()
+        ds_counts.columns = ["Respuesta", "Conteo"]
+        fig_ds = px.pie(ds_counts, names="Respuesta", values="Conteo", hole=0.45, color_discrete_sequence=PALETTE)
+        fig_ds.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
+        a2.plotly_chart(fig_ds, use_container_width=True)
+        a2.caption("Dataset base: existencia de fuente oficial por área.")
 
     col_prob = "¿Qué tan seguido encuentran problemas con relación a datos?"
     if col_prob in df_f.columns:
-        fig_prob = px.bar(df_f[col_prob].value_counts().reset_index(), x=col_prob, y="count")
-        fig_prob.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_prob, use_container_width=True)
+        prob_counts = df_f[col_prob].astype(str).value_counts().reset_index()
+        prob_counts.columns = ["Frecuencia", "Conteo"]
+        fig_prob = px.bar(prob_counts, x="Frecuencia", y="Conteo", text="Conteo", color_discrete_sequence=[PALETTE[1]])
+        fig_prob.update_traces(textposition="outside")
+        fig_prob.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
+        a3.plotly_chart(fig_prob, use_container_width=True)
+        a3.caption("Calidad de datos: frecuencia de problemas reportados.")
 
-st.divider()
+# -------------------------
+# TAB 2: Componentes
+# -------------------------
+with tab2:
+    st.subheader("🧩 Componentes que forman la madurez (promedio 0–5)")
+    comp_cols = [
+        ("Dependencia de datos/tecnología", "score_dependencia"),
+        ("Nivel Excel", "score_excel"),
+        ("Uso de Power BI", "score_powerbi"),
+        ("Confiabilidad dashboards", "score_dashboards"),
+        ("Frecuencia reportes", "score_freq_reportes"),
+        ("Dataset base", "score_dataset_base"),
+        ("Calidad de datos (menos problemas=mejor)", "score_calidad_datos"),
+        ("Decisiones con datos", "score_decisiones_con_datos"),
+        ("Ideas de mejora", "score_ideas_mejora"),
+        ("Conoce herramientas digitales", "score_conoce_herr_digitales"),
+        ("Familiaridad IA", "score_ia_familiaridad"),
+    ]
 
-# =====================================================
-# COMPONENTES (PROMEDIOS)
-# =====================================================
-st.subheader("🧠 Promedios de componentes (0–5)")
-comp_cols = [
-    ("Dependencia de datos/tecnología", "score_dependencia"),
-    ("Nivel Excel", "score_excel"),
-    ("Uso de Power BI", "score_powerbi"),
-    ("Confiabilidad dashboards", "score_dashboards"),
-    ("Frecuencia reportes", "score_freq_reportes"),
-    ("Dataset base", "score_dataset_base"),
-    ("Calidad de datos (menos problemas=mejor)", "score_calidad_datos"),
-    ("Decisiones con datos", "score_decisiones_con_datos"),
-    ("Ideas de mejora", "score_ideas_mejora"),
-    ("Conoce herramientas digitales", "score_conoce_herr_digitales"),
-    ("Familiaridad IA", "score_ia_familiaridad"),
-]
+    comp_df = pd.DataFrame(
+        {
+            "Componente": [a for a, _ in comp_cols],
+            "Promedio (0–5)": [df_f[b].mean() if b in df_f.columns else np.nan for _, b in comp_cols],
+        }
+    ).dropna().sort_values("Promedio (0–5)", ascending=True)
 
-comp_df = pd.DataFrame(
-    {
-        "Componente": [a for a, _ in comp_cols],
-        "Promedio (0–5)": [df_f[b].mean() if b in df_f.columns else np.nan for _, b in comp_cols],
-    }
-).dropna().sort_values("Promedio (0–5)", ascending=False)
-
-if len(comp_df):
-    fig_comp = px.bar(comp_df, x="Promedio (0–5)", y="Componente", orientation="h", text="Promedio (0–5)")
-    fig_comp.update_traces(texttemplate="%{text:.2f}", textposition="outside")
-    fig_comp.update_layout(height=500, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig_comp, use_container_width=True)
-else:
-    st.info("No se pudieron calcular promedios de componentes (revisa columnas del Excel).")
-
-st.divider()
-
-# =====================================================
-# TABLA
-# =====================================================
-st.subheader("📋 Respuestas (filtradas)")
-cols_show = [
-    "Área",
-    "Nombre1",
-    "Madurez_0_100",
-    "Nivel promedio de Excel",
-    "¿Se usa Power BI en el área?",
-    "¿Qué tan seguido se crean reportes en tu área?",
-    "¿Qué tan seguido encuentran problemas con relación a datos?",
-    "En reuniones de seguimiento, ¿qué tanto se decide con datos vs “percepción”?",
-    "¿Qué tan familiarizo estás con herramientas de IA? 1-5",
-    "¿Cuál descripción se parece más a tu área hoy?",
-]
-cols_show = [c for c in cols_show if c in df_f.columns]
-
-if show_people:
-    st.dataframe(
-        df_f[cols_show].sort_values(
-            ["Área", "Madurez_0_100"] if "Área" in df_f.columns else ["Madurez_0_100"],
-            ascending=[True, False] if "Área" in df_f.columns else [False],
-        ),
-        use_container_width=True,
+    fig_comp = px.bar(
+        comp_df,
+        x="Promedio (0–5)",
+        y="Componente",
+        orientation="h",
+        text="Promedio (0–5)",
+        color="Promedio (0–5)",
+        color_continuous_scale=["#ff4d4f", "#faad14", "#52c41a", "#722ed1"],
     )
-else:
-    st.dataframe(by_area, use_container_width=True)
+    fig_comp.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+    fig_comp.update_layout(height=560, margin=dict(l=10, r=10, t=10, b=10))
+    st.plotly_chart(fig_comp, use_container_width=True)
 
-st.caption("Nota: El índice Madurez_0_100 se calcula mapeando respuestas a una escala 1–5 y promediando componentes.")
+    st.info(
+        "Tip: este gráfico te dice *en qué* mejorar. "
+        "Los componentes más bajos son los mejores candidatos para un plan de acción (gobierno de datos, BI, estandarización de reportes, etc.)."
+    )
+
+# -------------------------
+# TAB 3: Detalle
+# -------------------------
+with tab3:
+    st.subheader("📋 Detalle (por defecto: toda la organización)")
+    cols_show = [
+        "Área",
+        "Nombre1",
+        "Madurez_0_100",
+        "Nivel_madurez",
+        "Nivel promedio de Excel",
+        "¿Se usa Power BI en el área?",
+        "¿Qué tan seguido se crean reportes en tu área?",
+        "¿Qué tan seguido encuentran problemas con relación a datos?",
+        "En reuniones de seguimiento, ¿qué tanto se decide con datos vs “percepción”?",
+        "¿Qué tan familiarizo estás con herramientas de IA? 1-5",
+        "¿Cuál descripción se parece más a tu área hoy?",
+    ]
+    cols_show = [c for c in cols_show if c in df_f.columns]
+
+    if show_people:
+        sort_cols = ["Área", "Madurez_0_100"] if "Área" in df_f.columns else ["Madurez_0_100"]
+        df_out = df_f[cols_show].sort_values(sort_cols, ascending=[True, False] if len(sort_cols) == 2 else [False])
+        st.dataframe(df_out, use_container_width=True, height=520)
+    else:
+        st.dataframe(by_area, use_container_width=True, height=520)
+
+    st.caption(
+        "🔎 Los filtros del sidebar son opcionales: el tablero siempre arranca mostrando toda la información. "
+        "El índice Madurez_0_100 se calcula mapeando respuestas a escala 1–5 y promediando componentes."
+    )
 
