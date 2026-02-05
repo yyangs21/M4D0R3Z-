@@ -158,9 +158,9 @@ st.markdown(
     """
 <div style="padding: 14px 16px; border-radius: 14px; background: rgba(0,0,0,0.04);">
   <h2 style="margin:0;">📌 Resumen Ejecutivo</h2>
-  <div style="margin-top:6px; color: rgba(0,0,0,0.65);">
+  <div style="margin-top:6px; color: rgba(255, 0, 0);">
     Este tablero muestra un índice de madurez (0–100) construido a partir de prácticas de datos, tecnología, BI, calidad de datos, cultura y familiaridad con IA.
-    <br/>Por defecto ves <b>toda la organización</b>. Los filtros son solo para enfocarte en un área específica.
+    <br/>Por defecto ves <b>toda la organización</b>. 
   </div>
 </div>
 """,
@@ -404,4 +404,5 @@ with tab3:
         "🔎 Los filtros del sidebar son opcionales: el tablero siempre arranca mostrando toda la información. "
         "El índice Madurez_0_100 se calcula mapeando respuestas a escala 1–5 y promediando componentes."
     )
+
 
