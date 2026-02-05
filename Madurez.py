@@ -9,23 +9,16 @@ import plotly.express as px
 st.set_page_config(page_title="Dashboard Madurez Digital", layout="wide")
 st.title("📊 Dashboard — Madurez Digital, Tecnología y Analítica")
 
-# =====================================================
-# CARGA
-# =====================================================
-DEFAULT_PATH = r"Madurez Digital, Tecnología y Analítica.xlsx"  # cambia si es necesario
+# GitHub-friendly: el Excel vive en la raíz del repo
+EXCEL_PATH = "Madurez Digital, Tecnología y Analítica.xlsx"
+SHEET_NAME = "DATA"
 
-with st.sidebar:
-    st.header("⚙️ Datos")
-    uploaded = st.file_uploader("Sube el Excel", type=["xlsx"])
-    st.caption("Si no subes archivo, intentará leer el archivo local indicado en DEFAULT_PATH.")
-    st.divider()
-    st.header("🔎 Filtros")
-    # filtros se llenan después de cargar df
 
-def norm_text(x):
+def norm_text(x) -> str:
     if pd.isna(x):
         return ""
     return str(x).strip().lower()
+
 
 def yes_no(x):
     t = norm_text(x)
@@ -35,20 +28,17 @@ def yes_no(x):
         return 0
     return np.nan
 
-@st.cache_data(show_spinner=False)
-def load_data(file) -> pd.DataFrame:
-    if file is not None:
-        df = pd.read_excel(file, sheet_name="DATA")
-    else:
-        df = pd.read_excel(DEFAULT_PATH, sheet_name="DATA")
-    return df
 
-# =====================================================
-# TRANSFORMACIONES / SCORE
-# =====================================================
+@st.cache_data(show_spinner=False)
+def load_data() -> pd.DataFrame:
+    # Forzamos openpyxl para leer .xlsx
+    return pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME, engine="openpyxl")
+
+
 def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
 
+    # Columnas del Excel (tal como vienen en tu archivo)
     col_dep = '¿Qué tan “dependiente” es tu área de "datos" y "tecnología" para operar bien?'
     col_excel = "Nivel promedio de Excel"
     col_pbi = "¿Se usa Power BI en el área?"
@@ -63,7 +53,8 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     col_ai_fam = "¿Qué tan familiarizo estás con herramientas de IA? 1-5"
     col_want_ai = "¿Te gustaría implementar proyectos de inteligencia artificial para automatizar tareas de tu área?"
 
-    map_dep = {"poco": 2, "medio": 3, "mucho": 4, "total": 5, "nada": 1}
+    # Mapeos a escala 1–5
+    map_dep = {"nada": 1, "poco": 2, "medio": 3, "mucho": 4, "total": 5}
     map_excel = {"básico": 2, "basico": 2, "intermedio": 3, "avanzado": 4, "experto": 5}
     map_pbi = {
         "no": 1,
@@ -73,7 +64,7 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
         "si, y también creamos/modificamos reportes/tableros": 5,
     }
     map_rep = {"mensual": 2, "quincenal": 3, "semanal": 4, "diario": 5}
-    # Calidad de datos: menos problemas = mejor score
+    # Menos problemas => mejor score
     map_prob = {"muy frecuente": 2, "frecuente": 3, "a veces": 4, "casi nunca": 5, "nunca": 5}
     map_dec = {
         "casi todo percepción": 1,
@@ -84,6 +75,7 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     }
     map_ideas = {"nunca": 1, "rara vez": 2, "a veces": 3, "frecuente": 4, "siempre": 5}
 
+    # Scores
     d["score_dependencia"] = d[col_dep].map(lambda x: map_dep.get(norm_text(x), np.nan))
     d["score_excel"] = d[col_excel].map(lambda x: map_excel.get(norm_text(x), np.nan))
     d["score_powerbi"] = d[col_pbi].map(lambda x: map_pbi.get(norm_text(x), np.nan))
@@ -95,8 +87,6 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     d["score_ideas_mejora"] = d[col_ideas].map(lambda x: map_ideas.get(norm_text(x), np.nan))
     d["score_conoce_herr_digitales"] = d[col_tools].map(yes_no)
     d["score_ia_familiaridad"] = pd.to_numeric(d[col_ai_fam], errors="coerce")
-    d["score_quiere_ia"] = d[col_want_ai].map(yes_no)
-    d["score_quiere_herr_digitales"] = d[col_want_tools].map(yes_no)
 
     components = [
         "score_dependencia",
@@ -114,15 +104,24 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
 
     d["Madurez_0_5"] = d[components].mean(axis=1, skipna=True)
     d["Madurez_0_100"] = (d["Madurez_0_5"] / 5 * 100).round(1)
+
     return d
 
+
 # =====================================================
-# MAIN
+# CARGA
 # =====================================================
 try:
-    df_raw = load_data(uploaded)
+    df_raw = load_data()
+except FileNotFoundError:
+    st.error(
+        "❌ No encontré el Excel en la raíz del repo.\n\n"
+        f"Asegúrate de que exista este archivo:\n\n`{EXCEL_PATH}`\n\n"
+        "y que el sheet se llame `DATA`."
+    )
+    st.stop()
 except Exception as e:
-    st.error(f"No pude cargar el Excel. Revisa el archivo o la ruta DEFAULT_PATH.\n\nDetalle: {e}")
+    st.error(f"❌ Error leyendo el Excel con openpyxl:\n\n{e}")
     st.stop()
 
 df = add_scores(df_raw)
@@ -130,29 +129,47 @@ df = add_scores(df_raw)
 # =====================================================
 # FILTROS
 # =====================================================
-areas = sorted(df["Área"].dropna().unique().tolist())
 with st.sidebar:
-    selected_areas = st.multiselect("Área", options=areas, default=areas)
+    st.header("🔎 Filtros")
+    areas = sorted(df["Área"].dropna().unique().tolist()) if "Área" in df.columns else []
+    if areas:
+        selected_areas = st.multiselect("Área", options=areas, default=areas)
+    else:
+        selected_areas = []
+        st.warning("No se encontró la columna 'Área'. Se mostrarán todos los datos.")
     show_people = st.checkbox("Mostrar tabla por persona", value=True)
 
-df_f = df[df["Área"].isin(selected_areas)].copy()
+df_f = df[df["Área"].isin(selected_areas)].copy() if selected_areas else df.copy()
 
 # =====================================================
 # KPIs
 # =====================================================
 overall = float(df_f["Madurez_0_100"].mean()) if len(df_f) else np.nan
 n_resp = int(len(df_f))
-by_area = df_f.groupby("Área", as_index=False)["Madurez_0_100"].mean().sort_values("Madurez_0_100", ascending=False)
+
+by_area = (
+    df_f.groupby("Área", as_index=False)["Madurez_0_100"].mean()
+    .sort_values("Madurez_0_100", ascending=False)
+    if "Área" in df_f.columns and len(df_f)
+    else pd.DataFrame(columns=["Área", "Madurez_0_100"])
+)
+
 best_area = by_area.iloc[0]["Área"] if len(by_area) else "-"
 worst_area = by_area.iloc[-1]["Área"] if len(by_area) else "-"
 
-# adopción Power BI
 pbi_col = "¿Se usa Power BI en el área?"
-pbi_yes = df_f[pbi_col].astype(str).str.lower().str.startswith(("si", "sí")).mean() * 100 if len(df_f) else 0
-
-# dataset base
 dataset_col = "En tu área existe un “dataset base” o archivo maestro que se use como fuente oficial."
-dataset_yes = df_f[dataset_col].astype(str).str.lower().str.startswith(("si", "sí")).mean() * 100 if len(df_f) else 0
+
+pbi_yes = (
+    df_f[pbi_col].astype(str).str.lower().str.startswith(("si", "sí")).mean() * 100
+    if pbi_col in df_f.columns and len(df_f)
+    else 0
+)
+dataset_yes = (
+    df_f[dataset_col].astype(str).str.lower().str.startswith(("si", "sí")).mean() * 100
+    if dataset_col in df_f.columns and len(df_f)
+    else 0
+)
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Madurez promedio (0–100)", f"{overall:.1f}" if not np.isnan(overall) else "-")
@@ -175,16 +192,19 @@ c1, c2 = st.columns([1.2, 1])
 
 with c1:
     st.subheader("🏢 Madurez promedio por área")
-    fig_area = px.bar(
-        by_area,
-        x="Madurez_0_100",
-        y="Área",
-        orientation="h",
-        text="Madurez_0_100",
-    )
-    fig_area.update_traces(texttemplate="%{text:.1f}", textposition="outside")
-    fig_area.update_layout(height=650, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig_area, use_container_width=True)
+    if len(by_area):
+        fig_area = px.bar(
+            by_area,
+            x="Madurez_0_100",
+            y="Área",
+            orientation="h",
+            text="Madurez_0_100",
+        )
+        fig_area.update_traces(texttemplate="%{text:.1f}", textposition="outside")
+        fig_area.update_layout(height=650, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig_area, use_container_width=True)
+    else:
+        st.info("No hay datos suficientes para graficar por área.")
 
 with c2:
     st.subheader("📈 Distribución de madurez (personas)")
@@ -194,23 +214,26 @@ with c2:
 
     st.subheader("🧩 Excel / Power BI / Calidad de datos")
     col_excel = "Nivel promedio de Excel"
-    fig_excel = px.bar(df_f[col_excel].value_counts().reset_index(), x=col_excel, y="count")
-    fig_excel.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig_excel, use_container_width=True)
+    if col_excel in df_f.columns:
+        fig_excel = px.bar(df_f[col_excel].value_counts().reset_index(), x=col_excel, y="count")
+        fig_excel.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig_excel, use_container_width=True)
 
-    fig_pbi = px.bar(df_f[pbi_col].value_counts().reset_index(), x=pbi_col, y="count")
-    fig_pbi.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig_pbi, use_container_width=True)
+    if pbi_col in df_f.columns:
+        fig_pbi = px.bar(df_f[pbi_col].value_counts().reset_index(), x=pbi_col, y="count")
+        fig_pbi.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig_pbi, use_container_width=True)
 
     col_prob = "¿Qué tan seguido encuentran problemas con relación a datos?"
-    fig_prob = px.bar(df_f[col_prob].value_counts().reset_index(), x=col_prob, y="count")
-    fig_prob.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig_prob, use_container_width=True)
+    if col_prob in df_f.columns:
+        fig_prob = px.bar(df_f[col_prob].value_counts().reset_index(), x=col_prob, y="count")
+        fig_prob.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig_prob, use_container_width=True)
 
 st.divider()
 
 # =====================================================
-# DETALLE POR COMPONENTES (PROMEDIOS)
+# COMPONENTES (PROMEDIOS)
 # =====================================================
 st.subheader("🧠 Promedios de componentes (0–5)")
 comp_cols = [
@@ -227,15 +250,20 @@ comp_cols = [
     ("Familiaridad IA", "score_ia_familiaridad"),
 ]
 
-comp_df = pd.DataFrame({
-    "Componente": [a for a, _ in comp_cols],
-    "Promedio (0–5)": [df_f[b].mean() for _, b in comp_cols],
-}).sort_values("Promedio (0–5)", ascending=False)
+comp_df = pd.DataFrame(
+    {
+        "Componente": [a for a, _ in comp_cols],
+        "Promedio (0–5)": [df_f[b].mean() if b in df_f.columns else np.nan for _, b in comp_cols],
+    }
+).dropna().sort_values("Promedio (0–5)", ascending=False)
 
-fig_comp = px.bar(comp_df, x="Promedio (0–5)", y="Componente", orientation="h", text="Promedio (0–5)")
-fig_comp.update_traces(texttemplate="%{text:.2f}", textposition="outside")
-fig_comp.update_layout(height=500, margin=dict(l=10, r=10, t=10, b=10))
-st.plotly_chart(fig_comp, use_container_width=True)
+if len(comp_df):
+    fig_comp = px.bar(comp_df, x="Promedio (0–5)", y="Componente", orientation="h", text="Promedio (0–5)")
+    fig_comp.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+    fig_comp.update_layout(height=500, margin=dict(l=10, r=10, t=10, b=10))
+    st.plotly_chart(fig_comp, use_container_width=True)
+else:
+    st.info("No se pudieron calcular promedios de componentes (revisa columnas del Excel).")
 
 st.divider()
 
@@ -244,7 +272,9 @@ st.divider()
 # =====================================================
 st.subheader("📋 Respuestas (filtradas)")
 cols_show = [
-    "Área", "Nombre1", "Madurez_0_100",
+    "Área",
+    "Nombre1",
+    "Madurez_0_100",
     "Nivel promedio de Excel",
     "¿Se usa Power BI en el área?",
     "¿Qué tan seguido se crean reportes en tu área?",
@@ -253,9 +283,18 @@ cols_show = [
     "¿Qué tan familiarizo estás con herramientas de IA? 1-5",
     "¿Cuál descripción se parece más a tu área hoy?",
 ]
+cols_show = [c for c in cols_show if c in df_f.columns]
+
 if show_people:
-    st.dataframe(df_f[cols_show].sort_values(["Área", "Madurez_0_100"], ascending=[True, False]), use_container_width=True)
+    st.dataframe(
+        df_f[cols_show].sort_values(
+            ["Área", "Madurez_0_100"] if "Área" in df_f.columns else ["Madurez_0_100"],
+            ascending=[True, False] if "Área" in df_f.columns else [False],
+        ),
+        use_container_width=True,
+    )
 else:
     st.dataframe(by_area, use_container_width=True)
 
 st.caption("Nota: El índice Madurez_0_100 se calcula mapeando respuestas a una escala 1–5 y promediando componentes.")
+
