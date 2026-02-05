@@ -42,9 +42,9 @@ def load_data() -> pd.DataFrame:
 def madurez_level(score_0_100: float) -> str:
     if pd.isna(score_0_100):
         return "Sin dato"
-    if score_0_100 < 50:
+    if score_0_100 < 60:
         return "🔴 Baja"
-    if score_0_100 < 65:
+    if score_0_100 < 75:
         return "🟡 Media"
     if score_0_100 < 80:
         return "🟢 Buena"
@@ -404,5 +404,6 @@ with tab3:
         "🔎 Los filtros del sidebar son opcionales: el tablero siempre arranca mostrando toda la información. "
         "El índice Madurez_0_100 se calcula mapeando respuestas a escala 1–5 y promediando componentes."
     )
+
 
 
