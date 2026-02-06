@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 # =====================================================
 st.set_page_config(page_title="Dashboard Madurez Digital", layout="wide")
 
-EXCEL_PATH = "Madurez Digital, Tecnología y Analítica.xlsx"
+EXCEL_PATH = "Madurez Digital.xlsx"
 SHEET_NAME = "DATA"
 
 # Paleta (más “viva” y entendible)
@@ -403,6 +403,7 @@ with tab3:
         "🔎 Los filtros del sidebar son opcionales: el tablero siempre arranca mostrando toda la información. "
         "El índice Madurez_0_100 se calcula mapeando respuestas a escala 1–5 y promediando componentes."
     )
+
 
 
 
