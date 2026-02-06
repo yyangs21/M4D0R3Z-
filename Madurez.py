@@ -187,21 +187,7 @@ if "Área" in df_area.columns:
 # =====================================================
 # HEADER
 # =====================================================
-st.markdown(
-    """
-<div style="padding: 14px 16px; border-radius: 14px; background: rgba(0,0,0,0.04);">
-  <h2 style="margin:0;">📌 Resumen Ejecutivo</h2>
-  <div style="margin-top:6px; color: rgba(0,0,0,0.65);">
-    El tablero inicia mostrando <b>toda la información</b>.  
-    Los filtros (DEPARTAMENTO / Área) son opcionales para enfocarte en una sección específica.  
-    <br/><b>Importante:</b> los registros con <b>Área = N/A</b> no se consideran en las gráficas y rankings por Área.
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
 
-st.write("")
 
 # =====================================================
 # KPIs (global con filtros aplicados)
@@ -459,6 +445,7 @@ with tab_det:
     st.caption(
         "Los filtros son opcionales."
             )
+
 
 
 
