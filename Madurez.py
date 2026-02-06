@@ -370,26 +370,7 @@ with tab_dept:
         fig_hist2.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig_hist2, use_container_width=True, key="chart_dept_hist")
 
-        st.subheader("🚦 Semáforo (conteo)")
-        order = ["🔴 Baja", "🟡 Media", "🟢 Buena", "🟣 Alta"]
-        sem2 = df_f["Nivel_madurez"].value_counts().reindex(order).fillna(0).reset_index()
-        sem2.columns = ["Nivel", "Personas"]
-        fig_sem2 = px.bar(
-            sem2,
-            x="Nivel",
-            y="Personas",
-            text="Personas",
-            color="Nivel",
-            color_discrete_map={
-                "🔴 Baja": "#ff4d4f",
-                "🟡 Media": "#faad14",
-                "🟢 Buena": "#52c41a",
-                "🟣 Alta": "#722ed1",
-            },
-        )
-        fig_sem2.update_traces(textposition="outside")
-        fig_sem2.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_sem2, use_container_width=True, key="chart_dept_semaforo")
+       
 
 # -------------------------
 # TAB: COMPONENTES
@@ -478,6 +459,7 @@ with tab_det:
     st.caption(
         "Los filtros son opcionales."
             )
+
 
 
 
