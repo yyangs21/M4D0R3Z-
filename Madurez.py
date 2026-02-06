@@ -148,7 +148,7 @@ except Exception as e:
 df = add_scores(df_raw)
 
 # Normalización básica (evita espacios raros)
-for col in ["Área", "Departamento", "Nombre1"]:
+for col in ["Área", "DEPARTAMENTO", "Nombre1"]:
     if col in df.columns:
         df[col] = df[col].astype(str).str.strip()
 
@@ -163,18 +163,18 @@ if "Área" in df.columns:
     areas_valid = sorted([a for a in df["Área"].dropna().unique().tolist() if not is_na_area(a)])
 
 depts = []
-if "Departamento" in df.columns:
-    depts = sorted(df["Departamento"].dropna().unique().tolist())
+if "DEPARTAMENTO" in df.columns:
+    depts = sorted(df["DEPARTAMENTO"].dropna().unique().tolist())
 
-selected_depts = st.sidebar.multiselect("Departamento", options=depts, default=depts) if depts else []
+selected_depts = st.sidebar.multiselect("DEPARTAMENTO", options=depts, default=depts) if depts else []
 selected_areas = st.sidebar.multiselect("Área", options=areas_valid, default=areas_valid) if areas_valid else []
 
 show_people = st.sidebar.checkbox("Ver tabla por persona", value=True)
 
-# Aplicación de filtros (Departamento y Área)
+# Aplicación de filtros (DEPARTAMENTO y Área)
 df_f = df.copy()
-if selected_depts and "Departamento" in df_f.columns:
-    df_f = df_f[df_f["Departamento"].isin(selected_depts)].copy()
+if selected_depts and "DEPARTAMENTO" in df_f.columns:
+    df_f = df_f[df_f["DEPARTAMENTO"].isin(selected_depts)].copy()
 # Nota: el filtro de área SOLO deja pasar áreas válidas (ya no hay N/A por definición)
 if selected_areas and "Área" in df_f.columns:
     df_f = df_f[df_f["Área"].isin(selected_areas)].copy()
@@ -193,7 +193,7 @@ st.markdown(
   <h2 style="margin:0;">📌 Resumen Ejecutivo</h2>
   <div style="margin-top:6px; color: rgba(0,0,0,0.65);">
     El tablero inicia mostrando <b>toda la información</b>.  
-    Los filtros (Departamento / Área) son opcionales para enfocarte en una sección específica.  
+    Los filtros (DEPARTAMENTO / Área) son opcionales para enfocarte en una sección específica.  
     <br/><b>Importante:</b> los registros con <b>Área = N/A</b> no se consideran en las gráficas y rankings por Área.
   </div>
 </div>
@@ -223,22 +223,22 @@ dataset_yes = (
     else 0
 )
 
-# Rankings por Área (SIN N/A) y por Departamento
+# Rankings por Área (SIN N/A) y por DEPARTAMENTO
 by_area = (
     df_area.groupby("Área", as_index=False)["Madurez_0_100"].mean().sort_values("Madurez_0_100", ascending=False)
     if "Área" in df_area.columns and len(df_area)
     else pd.DataFrame(columns=["Área", "Madurez_0_100"])
 )
 by_dept = (
-    df_f.groupby("Departamento", as_index=False)["Madurez_0_100"].mean().sort_values("Madurez_0_100", ascending=False)
-    if "Departamento" in df_f.columns and len(df_f)
-    else pd.DataFrame(columns=["Departamento", "Madurez_0_100"])
+    df_f.groupby("DEPARTAMENTO", as_index=False)["Madurez_0_100"].mean().sort_values("Madurez_0_100", ascending=False)
+    if "DEPARTAMENTO" in df_f.columns and len(df_f)
+    else pd.DataFrame(columns=["DEPARTAMENTO", "Madurez_0_100"])
 )
 
 best_area = by_area.iloc[0]["Área"] if len(by_area) else "-"
 worst_area = by_area.iloc[-1]["Área"] if len(by_area) else "-"
-best_dept = by_dept.iloc[0]["Departamento"] if len(by_dept) else "-"
-worst_dept = by_dept.iloc[-1]["Departamento"] if len(by_dept) else "-"
+best_dept = by_dept.iloc[0]["DEPARTAMENTO"] if len(by_dept) else "-"
+worst_dept = by_dept.iloc[-1]["DEPARTAMENTO"] if len(by_dept) else "-"
 
 c1, c2, c3, c4, c5 = st.columns([1.25, 1, 1, 1, 1])
 
@@ -286,7 +286,7 @@ st.divider()
 # TABS
 # =====================================================
 tab_area, tab_dept, tab_comp, tab_det = st.tabs(
-    ["📊 Por área", "🏢 Por departamento", "🧩 Componentes", "📋 Detalle"]
+    ["📊 Por área", "🏢 Por DEPARTAMENTO", "🧩 Componentes", "📋 Detalle"]
 )
 
 # -------------------------
@@ -347,12 +347,12 @@ with tab_dept:
     left, right = st.columns([1.35, 1])
 
     with left:
-        st.subheader("🏢 Ranking de madurez por Departamento (promedio)")
+        st.subheader("🏢 Ranking de madurez por DEPARTAMENTO (promedio)")
         if len(by_dept):
             fig_dept = px.bar(
                 by_dept,
                 x="Madurez_0_100",
-                y="Departamento",
+                y="DEPARTAMENTO",
                 orientation="h",
                 text="Madurez_0_100",
                 color="Madurez_0_100",
@@ -362,7 +362,7 @@ with tab_dept:
             fig_dept.update_layout(height=600, margin=dict(l=10, r=10, t=10, b=10))
             st.plotly_chart(fig_dept, use_container_width=True, key="chart_dept_ranking")
         else:
-            st.info("No hay datos suficientes para graficar por Departamento (revisa la columna 'Departamento').")
+            st.info("No hay datos suficientes para graficar por DEPARTAMENTO (revisa la columna 'DEPARTAMENTO').")
 
     with right:
         st.subheader("📈 Distribución (personas)")
@@ -441,7 +441,7 @@ with tab_det:
     st.subheader("📋 Detalle (con filtros aplicados)")
 
     cols_show = [
-        "Departamento",
+        "DEPARTAMENTO",
         "Área",
         "Nombre1",
         "Madurez_0_100",
@@ -458,8 +458,8 @@ with tab_det:
 
     if show_people:
         sort_cols = []
-        if "Departamento" in df_f.columns:
-            sort_cols.append("Departamento")
+        if "DEPARTAMENTO" in df_f.columns:
+            sort_cols.append("DEPARTAMENTO")
         if "Área" in df_f.columns:
             sort_cols.append("Área")
         sort_cols.append("Madurez_0_100")
@@ -470,7 +470,7 @@ with tab_det:
         )
         st.dataframe(df_out, use_container_width=True, height=560, key="tabla_detalle")
     else:
-        st.write("**Resumen por Departamento**")
+        st.write("**Resumen por DEPARTAMENTO**")
         st.dataframe(by_dept, use_container_width=True, height=260, key="tabla_resumen_dept")
         st.write("**Resumen por Área (excluye N/A)**")
         st.dataframe(by_area, use_container_width=True, height=260, key="tabla_resumen_area")
@@ -478,6 +478,7 @@ with tab_det:
     st.caption(
         "Los filtros son opcionales."
             )
+
 
 
 
