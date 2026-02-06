@@ -9,8 +9,7 @@ import plotly.graph_objects as go
 # =====================================================
 st.set_page_config(page_title="Dashboard Madurez Digital", layout="wide")
 
-# Nombre del Excel en la raíz del repo
-EXCEL_PATH = "Madurez Digital.xlsx"
+EXCEL_PATH = "Madurez Digital.xlsx"  # en la raíz del repo
 SHEET_NAME = "DATA"
 
 PALETTE = px.colors.qualitative.Set2
@@ -41,6 +40,7 @@ def yes_no(x):
 
 @st.cache_data(show_spinner=False)
 def load_data() -> pd.DataFrame:
+    # Forzamos openpyxl para leer .xlsx
     return pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME, engine="openpyxl")
 
 
@@ -100,7 +100,7 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     d["score_dashboards"] = pd.to_numeric(d[col_dash], errors="coerce")
     d["score_freq_reportes"] = d[col_rep].map(lambda x: map_rep.get(norm_text(x), np.nan))
 
-    # Binarios (los llevamos a escala 0–5 “suave”)
+    # Binarios -> escala suave (para que aporte sin dominar)
     d["score_dataset_base"] = d[col_dataset].map(yes_no).map(lambda v: 5 if v == 1 else (2 if v == 0 else np.nan))
     d["score_conoce_herr_digitales"] = d[col_tools].map(yes_no).map(lambda v: 4 if v == 1 else (2 if v == 0 else np.nan))
 
@@ -137,8 +137,8 @@ try:
     df_raw = load_data()
 except FileNotFoundError:
     st.error(
-        "❌ No encontré el Excel en la raíz del repo.\n\n"
-        f"Verifica que exista: `{EXCEL_PATH}` y que el sheet se llame `{SHEET_NAME}`."
+        f"❌ No encontré el Excel en la raíz del repo: `{EXCEL_PATH}`\n\n"
+        f"Verifica también que el sheet se llame `{SHEET_NAME}`."
     )
     st.stop()
 except Exception as e:
@@ -147,33 +147,42 @@ except Exception as e:
 
 df = add_scores(df_raw)
 
-# =====================================================
-# LIMPIEZA: excluir Área = N/A
-# =====================================================
-if "Área" in df.columns:
-    df = df[~df["Área"].apply(is_na_area)].copy()
-
-# Normalización básica
-for col in ["Área", "Departamento"]:
+# Normalización básica (evita espacios raros)
+for col in ["Área", "Departamento", "Nombre1"]:
     if col in df.columns:
         df[col] = df[col].astype(str).str.strip()
 
 # =====================================================
-# SIDEBAR: filtros opcionales (por defecto TODO)
+# SIDEBAR: filtros (por defecto TODO)
 # =====================================================
 st.sidebar.title("🔎 Filtros (opcional)")
-areas = sorted(df["Área"].dropna().unique().tolist()) if "Área" in df.columns else []
-depts = sorted(df["Departamento"].dropna().unique().tolist()) if "Departamento" in df.columns else []
+
+# ÁREAS disponibles (excluye N/A para opciones y filtro)
+areas_valid = []
+if "Área" in df.columns:
+    areas_valid = sorted([a for a in df["Área"].dropna().unique().tolist() if not is_na_area(a)])
+
+depts = []
+if "Departamento" in df.columns:
+    depts = sorted(df["Departamento"].dropna().unique().tolist())
 
 selected_depts = st.sidebar.multiselect("Departamento", options=depts, default=depts) if depts else []
-selected_areas = st.sidebar.multiselect("Área", options=areas, default=areas) if areas else []
+selected_areas = st.sidebar.multiselect("Área", options=areas_valid, default=areas_valid) if areas_valid else []
+
 show_people = st.sidebar.checkbox("Ver tabla por persona", value=True)
 
+# Aplicación de filtros (Departamento y Área)
 df_f = df.copy()
 if selected_depts and "Departamento" in df_f.columns:
     df_f = df_f[df_f["Departamento"].isin(selected_depts)].copy()
+# Nota: el filtro de área SOLO deja pasar áreas válidas (ya no hay N/A por definición)
 if selected_areas and "Área" in df_f.columns:
     df_f = df_f[df_f["Área"].isin(selected_areas)].copy()
+
+# Dataset SOLO para gráficos por ÁREA (excluye registros con Área = N/A)
+df_area = df_f.copy()
+if "Área" in df_area.columns:
+    df_area = df_area[~df_area["Área"].apply(is_na_area)].copy()
 
 # =====================================================
 # HEADER
@@ -183,8 +192,9 @@ st.markdown(
 <div style="padding: 14px 16px; border-radius: 14px; background: rgba(0,0,0,0.04);">
   <h2 style="margin:0;">📌 Resumen Ejecutivo</h2>
   <div style="margin-top:6px; color: rgba(0,0,0,0.65);">
-    El tablero arranca mostrando <b>toda la información válida</b> (excluye Área = N/A).  
-    Los filtros (Departamento y Área) son opcionales para enfocarte.
+    El tablero inicia mostrando <b>toda la información</b>.  
+    Los filtros (Departamento / Área) son opcionales para enfocarte en una sección específica.  
+    <br/><b>Importante:</b> los registros con <b>Área = N/A</b> no se consideran en las gráficas y rankings por Área.
   </div>
 </div>
 """,
@@ -194,7 +204,7 @@ st.markdown(
 st.write("")
 
 # =====================================================
-# KPIs
+# KPIs (global con filtros aplicados)
 # =====================================================
 overall = float(df_f["Madurez_0_100"].mean()) if len(df_f) else np.nan
 n_resp = int(len(df_f))
@@ -213,9 +223,10 @@ dataset_yes = (
     else 0
 )
 
+# Rankings por Área (SIN N/A) y por Departamento
 by_area = (
-    df_f.groupby("Área", as_index=False)["Madurez_0_100"].mean().sort_values("Madurez_0_100", ascending=False)
-    if "Área" in df_f.columns and len(df_f)
+    df_area.groupby("Área", as_index=False)["Madurez_0_100"].mean().sort_values("Madurez_0_100", ascending=False)
+    if "Área" in df_area.columns and len(df_area)
     else pd.DataFrame(columns=["Área", "Madurez_0_100"])
 )
 by_dept = (
@@ -251,7 +262,7 @@ with c1:
         )
     )
     fig_gauge.update_layout(height=240, margin=dict(l=10, r=10, t=40, b=10))
-    st.plotly_chart(fig_gauge, use_container_width=True)
+    st.plotly_chart(fig_gauge, use_container_width=True, key="kpi_gauge")
 
 with c2:
     st.metric("Respuestas", f"{n_resp}")
@@ -279,13 +290,13 @@ tab_area, tab_dept, tab_comp, tab_det = st.tabs(
 )
 
 # -------------------------
-# TAB: Área
+# TAB: ÁREA (SIN N/A)
 # -------------------------
 with tab_area:
     left, right = st.columns([1.35, 1])
 
     with left:
-        st.subheader("🏢 Ranking de madurez por Área (promedio)")
+        st.subheader("🏢 Ranking de madurez por Área (promedio) — excluye Área=N/A")
         if len(by_area):
             fig_area = px.bar(
                 by_area,
@@ -298,19 +309,19 @@ with tab_area:
             )
             fig_area.update_traces(texttemplate="%{text:.1f}", textposition="outside")
             fig_area.update_layout(height=600, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig_area, use_container_width=True)
+            st.plotly_chart(fig_area, use_container_width=True, key="chart_area_ranking")
         else:
-            st.info("No hay datos suficientes para graficar por Área.")
+            st.info("No hay datos suficientes para graficar por Área (sin N/A).")
 
     with right:
         st.subheader("📈 Distribución (personas)")
-        fig_hist = px.histogram(df_f, x="Madurez_0_100", nbins=12, color_discrete_sequence=[PALETTE[0]])
+        fig_hist = px.histogram(df_area if len(df_area) else df_f, x="Madurez_0_100", nbins=12, color_discrete_sequence=[PALETTE[0]])
         fig_hist.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_hist, use_container_width=True)
+        st.plotly_chart(fig_hist, use_container_width=True, key="chart_area_hist")
 
         st.subheader("🚦 Semáforo (conteo)")
         order = ["🔴 Baja", "🟡 Media", "🟢 Buena", "🟣 Alta"]
-        sem = df_f["Nivel_madurez"].value_counts().reindex(order).fillna(0).reset_index()
+        sem = (df_area if len(df_area) else df_f)["Nivel_madurez"].value_counts().reindex(order).fillna(0).reset_index()
         sem.columns = ["Nivel", "Personas"]
         fig_sem = px.bar(
             sem,
@@ -327,10 +338,10 @@ with tab_area:
         )
         fig_sem.update_traces(textposition="outside")
         fig_sem.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_sem, use_container_width=True)
+        st.plotly_chart(fig_sem, use_container_width=True, key="chart_area_semaforo")
 
 # -------------------------
-# TAB: Departamento
+# TAB: DEPARTAMENTO
 # -------------------------
 with tab_dept:
     left, right = st.columns([1.35, 1])
@@ -349,7 +360,7 @@ with tab_dept:
             )
             fig_dept.update_traces(texttemplate="%{text:.1f}", textposition="outside")
             fig_dept.update_layout(height=600, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig_dept, use_container_width=True)
+            st.plotly_chart(fig_dept, use_container_width=True, key="chart_dept_ranking")
         else:
             st.info("No hay datos suficientes para graficar por Departamento (revisa la columna 'Departamento').")
 
@@ -357,7 +368,7 @@ with tab_dept:
         st.subheader("📈 Distribución (personas)")
         fig_hist2 = px.histogram(df_f, x="Madurez_0_100", nbins=12, color_discrete_sequence=[PALETTE[2]])
         fig_hist2.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_hist2, use_container_width=True)
+        st.plotly_chart(fig_hist2, use_container_width=True, key="chart_dept_hist")
 
         st.subheader("🚦 Semáforo (conteo)")
         order = ["🔴 Baja", "🟡 Media", "🟢 Buena", "🟣 Alta"]
@@ -378,10 +389,10 @@ with tab_dept:
         )
         fig_sem2.update_traces(textposition="outside")
         fig_sem2.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_sem2, use_container_width=True)
+        st.plotly_chart(fig_sem2, use_container_width=True, key="chart_dept_semaforo")
 
 # -------------------------
-# TAB: Componentes
+# TAB: COMPONENTES
 # -------------------------
 with tab_comp:
     st.subheader("🧩 Componentes que forman la madurez (promedio 0–5)")
@@ -419,15 +430,15 @@ with tab_comp:
         )
         fig_comp.update_traces(texttemplate="%{text:.2f}", textposition="outside")
         fig_comp.update_layout(height=560, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_comp, use_container_width=True)
+        st.plotly_chart(fig_comp, use_container_width=True, key="chart_componentes")
     else:
         st.info("No se pudieron calcular componentes (revisa columnas del Excel).")
 
 # -------------------------
-# TAB: Detalle
+# TAB: DETALLE
 # -------------------------
 with tab_det:
-    st.subheader("📋 Detalle (ya excluye Área=N/A)")
+    st.subheader("📋 Detalle (con filtros aplicados)")
 
     cols_show = [
         "Departamento",
@@ -457,19 +468,16 @@ with tab_det:
             sort_cols,
             ascending=[True] * (len(sort_cols) - 1) + [False]
         )
-        st.dataframe(df_out, use_container_width=True, height=560)
+        st.dataframe(df_out, use_container_width=True, height=560, key="tabla_detalle")
     else:
-        if len(by_dept):
-            st.subheader("Resumen por Departamento")
-            st.dataframe(by_dept, use_container_width=True, height=260)
-        if len(by_area):
-            st.subheader("Resumen por Área")
-            st.dataframe(by_area, use_container_width=True, height=260)
+        st.write("**Resumen por Departamento**")
+        st.dataframe(by_dept, use_container_width=True, height=260, key="tabla_resumen_dept")
+        st.write("**Resumen por Área (excluye N/A)**")
+        st.dataframe(by_area, use_container_width=True, height=260, key="tabla_resumen_area")
 
     st.caption(
-        "Los filtros del sidebar son opcionales. El tablero inicia mostrando toda la información válida "
-        "(excluye automáticamente Área=N/A)."
-    )
+        "Los filtros son opcionales."
+            )
 
 
 
