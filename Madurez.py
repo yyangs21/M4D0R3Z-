@@ -255,7 +255,7 @@ with c2:
     st.metric("Mediana", f"{df_f['Madurez_0_100'].median():.1f}" if len(df_f) else "-")
 
 with c3:
-    st.metric("Área más madura", best_area)
+    st.metric("Área más madura (Si es NAN es resultado de datos de los puestos de gerencias", best_area)
     st.metric("Área menos madura", worst_area)
 
 with c4:
@@ -445,6 +445,7 @@ with tab_det:
     st.caption(
         "Los filtros son opcionales."
             )
+
 
 
 
